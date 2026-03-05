@@ -1,0 +1,5 @@
+torch
+gradio
+numpy
+scipy
+Pillow

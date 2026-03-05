@@ -2,6 +2,20 @@ import torch
 import torch.nn.functional as F
 
 def get_noise_schedule(num_timesteps=100, device="cpu"):
+    """
+    Calculates survival probabilities for the diffusion process.
+
+    Creates linear schedule of betas (probability of a token being masked
+    as a specific step) and converts it to a cumulative product of alphas
+    (the probability that a token has survived unmasked from step 0 to t).
+
+    Args:
+        num_timesteps(int, optional): Total diffusion steps. Default 100.
+        device (str or torch.device, optional): The device to store the tensor on.
+
+    Returns:
+        torch.Tensor: A 1D tensor of survival probabilities, shape (num_timesteps,).
+    """
 
     betas = torch.linspace(0.01, 0.2, num_timesteps).to(device)
     alphas = 1.0 - betas
@@ -12,33 +26,42 @@ def get_noise_schedule(num_timesteps=100, device="cpu"):
 
 def apply_absorbing_mask(x_0, t, alphas_cumprod, mask_token_id=5):
     """
-    x_0: The batch of ground-truth routes, shape (Batch, 476)
-    t: A tensor of random timesteps for each item in the batch, shape (Batch,)
-    alphas_cumprod: The pre-calculated survival probabilities
-    mask_token_id: The integer representing the "MASK" class (5 in your setup)
+    Applies the forward diffusion process (corrupting data) by replacing valid climbing holds with a 
+    [MASK] token based on the current timestep.
+
+    This uses an Absorbing Discrete Diffusion approach where tokens transition to a single absorbing state
+    rather than transitioning between valid classes.
+    
+    Args:
+        x_0 (torch.Tensor): The batch of ground-truth routes, shape (Batch, 476)
+        t (torch.Tensior): A tensor of random timesteps for each item in the batch, shape (Batch,)
+        alphas_cumprod (torch.Tensor): The pre-calculated survival probabilities
+        mask_token_id (int): The integer representing the "MASK" class (5 in your setup)
+
+    Returns:
+        torch.Tensor: The corrupted board state (x_t), shape (Batch, 476)
     """
 
     batch_size, seq_len = x_0.shape
     device = x_0.device
 
-    # Ensure alphas_cumprod is on the same device
+    #  Ensure alphas_cumprod is on the same device
     alphas_cumprod = alphas_cumprod.to(device)
 
     alpha_bar_t = alphas_cumprod[t - 1]
 
-    # Reshape for broadcasting so we can compare it to our sequence
-    # Shape becomes (Batch, 1)
+    #  Reshape for broadcasting so we can compare it to our sequence
     alpha_bar_t = alpha_bar_t.unsqueeze(1)
 
-    # Generate random probabilities between 0 and 1 for every single hold
+    #  Generate random probabilities between 0 and 1 for every single hold
     rand_probs = torch.rand((batch_size, seq_len), device=device)
 
-    # Create a boolean mask:
-    # True if rand > alpha_bar_t (meaning we should mask it)
-    # False if rand <= alpha_bar_t (meaning we keep the original hold)
+    #  Create a boolean mask:
+    #  True if rand > alpha_bar_t (meaning we should mask it)
+    #  False if rand <= alpha_bar_t (meaning we keep the original hold)
     mask = rand_probs > alpha_bar_t
 
-    # Create x_t by copying x_0, then applying the MASK token where mask is True
+    #  Create x_t by copying x_0, then applying the MASK token where mask is True
     x_t = x_0.clone()
     x_t[mask] = mask_token_id
 
@@ -47,6 +70,21 @@ def apply_absorbing_mask(x_0, t, alphas_cumprod, mask_token_id=5):
 
 def sample_discrete_diffusion(model, coords, alphas_cumprod, num_timesteps=100, mask_token_id=5):
     """
+    Generates a random climbing route from scratch.
+
+    Starts with board filled with [MASK] tokens. Iterates backwards for T to 1, asking the model
+    to predict the original board, permanently unmasking a percentage of holds at each step based
+    on the noise schedule.
+
+    Args:
+        model (nn.Module): The trained KilterTransformer model.
+        coords (torch.Tensor): The physical (x, y) coordinates of all board nodes, shape (1, 476, 2).
+        alphas_cumprod (torch.Tensor): Precomputed survival probabilities.
+        num_timesteps (int, optional): Total diffusion steps. Default 100.
+        mask_token_id (int, optional): Integer ID for MASK class. Default 5.
+
+    Returns:
+        torch.Tensor: The final generated route array, shape (1, 476).
     """
 
     device = coords.device
@@ -86,11 +124,31 @@ def sample_discrete_diffusion(model, coords, alphas_cumprod, num_timesteps=100, 
             #  Update our board state
             x_t[update_mask] = x_0_pred[update_mask]
 
-    # Return the fully generated route
+    #  Return the fully generated route
     return x_t
 
 
 def generate_constrained_batch(model, coords, alphas_cumprod, constraints, batch_size=5, num_timesteps=100, mask_token_id=5):
+    """
+    Generates climbing routes while adhereing to user defined constraints.
+
+    Similar to standard sampling, but at every denoising step, it intercepts model's predicted probabilities
+    and forces probabilities of user-selected holds to 1.0 for their chosen class. Also applies spacial masks, e.g.,
+    preventing holds from generated above the selected finish hold.
+
+    Args:
+        model (nn.Module): The trained KilterTransformer model.
+        coords (torch.Tensor): The physical (x, y) coordinates of all board nodes.
+        alphas_cumprod (torch.Tensor): Precomputed survival probabilities.
+        constraints (dict): User-defined holds mapping node_idx (int) -> class_id (int).
+        batch_size (int, optional): Number of routes generated at once. Defaults to 5.
+        num_timesteps (int, optional): Total diffusion steps. Default 100.
+        mask_token_id (int, optional): Integer ID for MASK class. Default 5.
+
+    Returns:
+        torch.Tensor: The final generated route array, shape (batch_size, 476).
+    """
+
     device = coords.device
     model.eval()
 

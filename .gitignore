@@ -6,10 +6,13 @@ __pycache__/
 *.pyc
 
 # Ignore Data and Weights
-data/
-checkpoints/
+data_collection/Board.png
+data_collection/layout_preview.png
+data_collection/make_layout.py
 *.npz
 *.pt
 
 # Jupyter Notebook Cache
 .ipynb_checkpoints/
+
+make_gif.py

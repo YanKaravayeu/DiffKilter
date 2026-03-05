@@ -1,3 +1,14 @@
+"""
+DiffKilter Web App
+
+Script launches local Gradio web interface for boulder problem generation.
+Loads the trained KilterTransformer, handles user clicks via a KDTree spatial
+mapping, and triggers absorbing diffusion process to generate custom routes.
+
+Usage:
+    $ python app.py
+"""
+
 import gradio as gr
 import numpy as np
 import torch
@@ -52,7 +63,18 @@ pixel_coords[:, 1] = ((xy_raw[:, 1] - y_min) / (y_max - y_min)) * H
 
 hold_tree = KDTree(pixel_coords)
 
-def render_board_fast(route_array=None, constraints=None):
+def render_board(route_array=None, constraints=None):
+    """
+    Renders Kilterboard interface using PIL image compositing.
+
+    Args:
+        route_array (np.ndarray, optional): The 476-length array of generated holds.
+        constrains (dict, optional) = The user's manually selected holds.
+
+    Returns:
+        PIL.Image: The fully composited UI image.
+    """
+
     if constraints is None: constraints = {}
 
     overlay = Image.new("RGBA", bg_img.size, (0, 0, 0, 0))
@@ -108,6 +130,19 @@ tool_to_class = {
 }
 
 def handle_click(evt: gr.SelectData, current_tool, current_constraints):
+    """
+    Intercepts user clicks on the image and snaps them to nearest valid Kilterboard hold.
+    Updates the Gradio state dictionary to store the user's chosen Start/Hand/Foot/End holds.
+    
+    Args:
+        evt (gr.SelectData): The (x, y) pixel coordinates of the user's click.
+        current_tool (str): The brush currently selected in the UI (e.g., "Start", "Eraser").
+        current_constraints (dict): The active dictionary of forced holds.
+
+    Returns:
+        tuple: (Updated Image, Updated Constraints Dict, Formatted Text String)
+    """
+
     click_px_x, click_px_y = evt.index
     distance, node_idx = hold_tree.query([click_px_x, click_px_y])
     node_str = str(node_idx)
@@ -118,15 +153,19 @@ def handle_click(evt: gr.SelectData, current_tool, current_constraints):
     else:
         current_constraints[node_str] = tool_to_class[current_tool]
 
-    new_image = render_board_fast(route_array=None, constraints=current_constraints)
+    new_image = render_board(route_array=None, constraints=current_constraints)
     active_text = format_active_nodes(current_constraints)
 
     return new_image, current_constraints, active_text
 
 def run_generation(current_constraints):
+    """
+    Passes the user's hold constraints to the PyTorch diffusion model to generate a route.
+    """
+
     model_device = next(model.parameters()).device
 
-    # Convert string keys back to PyTorch ints
+    #  Convert string keys back to PyTorch ints
     safe_constraints = {int(k): int(v) for k, v in current_constraints.items()}
 
     print(f"GRADIO IS REQUESTING NODES: {safe_constraints}")
@@ -140,11 +179,11 @@ def run_generation(current_constraints):
     )
 
     route_array = generated_batch[0].cpu().numpy()
-    final_image = render_board_fast(route_array=route_array, constraints=current_constraints)
+    final_image = render_board(route_array=route_array, constraints=current_constraints)
     return final_image
 
 def clear_board():
-    return render_board_fast(route_array=None, constraints={}), {}, "No holds selected."
+    return render_board(route_array=None, constraints={}), {}, "No holds selected."
 
 #  Build UI
 with gr.Blocks(theme=gr.themes.Monochrome()) as app:
@@ -155,7 +194,7 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as app:
     with gr.Row():
         with gr.Column(scale=3):
             board_image = gr.Image(
-                value=render_board_fast(),
+                value=render_board(),
                 interactive=False,
                 label="Interactive Board"
             )
@@ -166,7 +205,6 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as app:
                 value="Start",
                 label="Select Brush"
             )
-
 
             generate_btn = gr.Button("Generate Route", variant="primary", size="lg")
             clear_btn = gr.Button("Clear Board")
