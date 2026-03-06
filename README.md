@@ -8,6 +8,10 @@ When training for climbing on a board, it can be difficult to search/think of pr
 
 I have been hooked on the concept of Machine Learning (ML) and wanted to do some personal research projects to get deep into it all! This is an end-to-end (ML) pipeline that generates novel climbing routes for a Kilterboard. It utilises a custom **Transformer Encoder** trained via **Absorbing Discrete Diffusion** and features a Gradio web interface for interactive route generation.
 
+## How To Use
+
+Just select the hold type you want and click on the hold to give it that hold type. If you just want to generate a climb with no selected holds, just click Generate Route!
+
 <p align="center">
 <img src="assets/DiffKilter_Create_Climb.gif" width="75%" height="75%"/>
 </p>
