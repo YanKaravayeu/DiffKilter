@@ -45,7 +45,7 @@ class KilterTransformer(nn.Module):
 
       Args:
         x (torch.Tensor): The masked board state, shape (Batch, 476).
-        t (torch.Tension): The current diffusion timesteps, shape (Batch,).
+        t (torch.Tensor): The current diffusion timesteps, shape (Batch,).
         coords (torch.Tensor): The normalised spatial coordinates, shape (Batch, 476, 2).
 
         Returns:

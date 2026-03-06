@@ -34,7 +34,7 @@ def apply_absorbing_mask(x_0, t, alphas_cumprod, mask_token_id=5):
     
     Args:
         x_0 (torch.Tensor): The batch of ground-truth routes, shape (Batch, 476)
-        t (torch.Tensior): A tensor of random timesteps for each item in the batch, shape (Batch,)
+        t (torch.Tensor): A tensor of random timesteps for each item in the batch, shape (Batch,)
         alphas_cumprod (torch.Tensor): The pre-calculated survival probabilities
         mask_token_id (int): The integer representing the "MASK" class (5 in your setup)
 
